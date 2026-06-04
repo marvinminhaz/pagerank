@@ -139,7 +139,9 @@ with sqlite3.connect("spider.sqlite") as conn:
                     continue
 
                 # Skip non-HTML resources (PDFs, images, etc.) — remove from Pages entirely
-                if content_type is not None and not content_type.startswith("text/html"):
+                if content_type is not None and not content_type.startswith(
+                    "text/html"
+                ):
                     print("Ignoring non text/html page")
                     cur.execute("delete from Pages where url = ?", (url,))
                     continue
@@ -177,7 +179,11 @@ with sqlite3.connect("spider.sqlite") as conn:
 
             if isinstance(href, str):
                 # Skip direct links to image files
-                if href.endswith(".png") or href.endswith(".jpg") or href.endswith(".gif"):
+                if (
+                    href.endswith(".png")
+                    or href.endswith(".jpg")
+                    or href.endswith(".gif")
+                ):
                     continue
 
                 # Convert relative URLs (e.g. "../about") to absolute URLs
@@ -219,4 +225,4 @@ with sqlite3.connect("spider.sqlite") as conn:
                 )
 
         print(f"retrieved {count} links")
-        conn.commit()  # Persist all changes for this page before moving to the next
+        conn.commit()  # Persist all changes for this page before moving to the nextk
