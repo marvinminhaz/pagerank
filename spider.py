@@ -71,11 +71,14 @@ with sqlite3.connect("spider.sqlite") as conn:
             weburl = weburl[: weburl.rfind("/")]
 
         # Seed the Pages table with the starting URL (html=null means unvisited)
-        cur.execute(
-            "insert into Pages (url, html, new_rank) values (?, null, 1.0)", (pageurl,)
-        )
-        # Save the root domain to Webs — only URLs starting with this will be crawled
-        cur.execute("insert or ignore into Webs (url) values (?)", (weburl,))
+        if len(weburl) > 1:
+            cur.execute(
+                "insert into Pages (url, html, new_rank) values (?, null, 1.0)",
+                (pageurl,),
+            )
+            # Save the root domain to Webs — only URLs starting with this will be crawled
+            cur.execute("insert or ignore into Webs (url) values (?)", (weburl,))
+            conn.commit()
 
     # Load all known root domains into memory for fast boundary checks during crawling
     cur.execute("select url from Webs")
@@ -120,7 +123,9 @@ with sqlite3.connect("spider.sqlite") as conn:
 
         from_id = row[0]  # ID of the page being crawled (used to record outgoing links)
         url = row[1]
-        print(from_id, url)
+        print(from_id, url, end=" ")
+        # Delete any existing links for this page (to avoid duplicates)
+        cur.execute("delete from Links where from_id = ?", (from_id,))
 
         # --- Fetch the page ---
         try:
@@ -135,7 +140,6 @@ with sqlite3.connect("spider.sqlite") as conn:
                     cur.execute(
                         "update Pages set error = ? where url = ?", (status_code, url)
                     )
-                    continue
 
                 # Skip non-HTML resources (PDFs, images, etc.) — remove from Pages entirely
                 if content_type is not None and not content_type.startswith(
@@ -143,6 +147,7 @@ with sqlite3.connect("spider.sqlite") as conn:
                 ):
                     print("Ignoring non text/html page")
                     cur.execute("delete from Pages where url = ?", (url,))
+                    cur.execute("update Pages set error = 0 where url = ?", (url,))
                     continue
 
                 print(f"read {len(html)} characters")
@@ -152,6 +157,7 @@ with sqlite3.connect("spider.sqlite") as conn:
 
         except KeyboardInterrupt:
             # Allow the user to stop crawling cleanly without losing progress
+            print(" ")
             print("Process interrupted by user")
             conn.commit()
             break
@@ -176,52 +182,59 @@ with sqlite3.connect("spider.sqlite") as conn:
             if href is None:
                 continue  # Skip anchors with no href attribute
 
-            if isinstance(href, str):
-                # Skip direct links to image files
-                if (
-                    href.endswith(".png")
-                    or href.endswith(".jpg")
-                    or href.endswith(".gif")
-                ):
-                    continue
+            if not isinstance(href, str):
+                continue  # Skip non-string href attributes
 
-                # Convert relative URLs (e.g. "../about") to absolute URLs
-                up = urlparse(href)
-                if len(up.scheme) < 1:
-                    href = urljoin(url, href)
+            # Skip direct links to image files
+            if href.endswith(".png") or href.endswith(".jpg") or href.endswith(".gif"):
+                continue
 
-                # Strip URL fragment (e.g. "#section2") — fragments point to the same page
-                ipos = href.find("#")
-                if ipos > 1:
-                    href = href[:ipos]
+            # Convert relative URLs (e.g. "../about") to absolute URLs
+            up = urlparse(href)
+            if len(up.scheme) < 1:
+                href = urljoin(url, href)
 
-                href = href.strip()
-                if not href.startswith("http"):
-                    continue  # Discard any remaining non-HTTP URLs (e.g. mailto:)
+            # Strip URL fragment (e.g. "#section2") — fragments point to the same page
+            ipos = href.find("#")
+            if ipos > 1:
+                href = href[:ipos]
+            # Strip any trailing slashes from the URL
+            href = href.strip()
+            if href.endswith("/"):
+                href = href.rstrip("/")
 
-                # Domain boundary check — only follow links within our known root domains
-                found = False
-                for web in webs:
-                    if href.startswith(web):
-                        found = True
-                        break
-                if not found:
-                    continue
+            if not href.startswith("http"):
+                continue  # Discard any remaining non-HTTP URLs (e.g. mailto:)
 
-                # Add the discovered URL to Pages if it hasn't been seen before
-                cur.execute(
-                    "insert or ignore into Pages (url, html, new_rank) values (?, null, 1.0)",
-                    (href,),
-                )
-                count += 1
+            # Domain boundary check — only follow links within our known root domains
+            found = False
+            for web in webs:
+                if href.startswith(web):
+                    found = True
+                    break
+            if not found:
+                continue
 
-                # Record the directed link: current page -> discovered page
-                cur.execute("select id from Pages where url = ?", (href,))
+            # Add the discovered URL to Pages if it hasn't been seen before
+            cur.execute(
+                "insert or ignore into Pages (url, html, new_rank) values (?, null, 1.0)",
+                (href,),
+            )
+            count += 1
+
+            # Record the directed link: current page -> discovered page
+            cur.execute("select id from Pages where url = ?", (href,))
+            try:
                 to_id = cur.fetchone()[0]
-                cur.execute(
-                    "insert or ignore into Links (from_id, to_id) values (?, ?)",
-                    (from_id, to_id),
-                )
+            except:
+                print(f"could not find id for {href}")
+                continue
+
+            # Record the directed link: current page -> discovered page
+            cur.execute(
+                "insert or ignore into Links (from_id, to_id) values (?, ?)",
+                (from_id, to_id),
+            )
 
         print(f"retrieved {count} links")
-        conn.commit()  # Persist all changes for this page before moving to the nextk
+        conn.commit()  # Persist all changes for this page before moving to the next
