@@ -226,8 +226,8 @@ with sqlite3.connect("spider.sqlite") as conn:
             cur.execute("select id from Pages where url = ?", (href,))
             try:
                 to_id = cur.fetchone()[0]
-            except:
-                print(f"could not find id for {href}")
+            except Exception as e:
+                print(f"could not find id for {href}: {e}")
                 continue
 
             # Record the directed link: current page -> discovered page
