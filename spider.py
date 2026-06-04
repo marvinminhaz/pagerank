@@ -5,7 +5,6 @@ import sqlite3
 import ssl
 from urllib.parse import urljoin, urlparse
 from urllib.request import urlopen
-
 from bs4 import BeautifulSoup
 
 # Disable SSL certificate verification to avoid HTTPS errors on some sites
