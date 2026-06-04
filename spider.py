@@ -90,8 +90,8 @@ with sqlite3.connect("spider.sqlite") as conn:
     while True:
         if many < 1:
             # Ask the user how many pages to crawl before pausing again
-            sval = input("Enter number of pages to crawl: ")
-            if sval == "":
+            sval = input("Enter number of pages to crawl(enter q/exit/quit to quit): ")
+            if sval == "exit" or sval == "quit" or sval == "q":
                 break
             if len(sval) < 1:
                 print("Invalid input, enter a number of pages to crawl.")
